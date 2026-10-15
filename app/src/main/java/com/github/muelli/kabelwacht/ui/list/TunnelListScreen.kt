@@ -77,6 +77,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.muelli.kabelwacht.R
@@ -223,6 +224,7 @@ fun TunnelListScreen(
     }
 
     var addMenuOpen by remember { mutableStateOf(false) }
+    var overflowOpen by remember { mutableStateOf(false) }
     var toDelete by remember { mutableStateOf<TunnelProfile?>(null) }
 
     // Leaving the search collapses it (before falling through to the system back).
@@ -306,6 +308,25 @@ fun TunnelListScreen(
                                 Icons.Outlined.Shield,
                                 contentDescription = stringResource(R.string.always_on_settings),
                             )
+                        }
+                        Box {
+                            IconButton(onClick = { overflowOpen = true }) {
+                                Icon(
+                                    Icons.Filled.MoreVert,
+                                    contentDescription = stringResource(R.string.more_options),
+                                )
+                            }
+                            DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.privacy_policy)) },
+                                    onClick = {
+                                        overflowOpen = false
+                                        runCatching {
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, PRIVACY_POLICY_URL.toUri()))
+                                        }
+                                    },
+                                )
+                            }
                         }
                     }
                 },
@@ -460,6 +481,9 @@ private const val TAP_WINDOW_MS = 2000L
 
 /** Below this many tunnels the search icon stays hidden — filtering adds nothing. */
 private const val SEARCH_MIN_TUNNELS = 4
+
+// Also entered as the store listing's privacy policy URL; keep the two in sync.
+private const val PRIVACY_POLICY_URL = "https://github.com/muelli/KabelWacht/blob/main/PRIVACY.md"
 
 @Composable
 private fun EmptyState(padding: PaddingValues) {
