@@ -36,7 +36,10 @@ class AutomationEngine(
         .stateIn(scope, SharingStarted.Eagerly, false)
 
     private var lastEvaluatedNetwork: NetworkStateSnapshot? = null
-    private var manuallySuppressedTunnel: String? = null
+
+    // Written from UI threads, read by the evaluation coroutine.
+    @Volatile
+    private var manualOverride: ManualOverride? = null
     private var evaluationJob: Job? = null
 
     init {
@@ -53,15 +56,11 @@ class AutomationEngine(
     }
 
     /**
-     * Notify the engine of an explicit user manual toggle on/off.
-     * Prevents automation from immediately fighting the user when they manually disconnect.
+     * Notify the engine of an explicit user manual toggle on/off, so automation
+     * does not fight the user: their choice holds until the network changes.
      */
     fun onUserManualToggle(tunnelName: String, up: Boolean) {
-        if (!up) {
-            manuallySuppressedTunnel = tunnelName
-        } else {
-            manuallySuppressedTunnel = null
-        }
+        manualOverride = ManualOverride(tunnelName, up)
     }
 
     private fun onNetworkOrConditionsChanged(
@@ -80,48 +79,29 @@ class AutomationEngine(
         snapshot: NetworkStateSnapshot,
         conditions: Map<String, com.github.muelli.kabelwacht.data.TunnelRunConditions>,
     ) {
-        // If physical network changed significantly, clear manual suppression
-        if (lastEvaluatedNetwork != null && hasNetworkEnvironmentChanged(lastEvaluatedNetwork!!, snapshot)) {
-            manuallySuppressedTunnel = null
+        // A real change of network ends the user's manual override.
+        val previous = lastEvaluatedNetwork
+        if (previous != null && hasNetworkEnvironmentChanged(previous, snapshot)) {
+            manualOverride = null
         }
         lastEvaluatedNetwork = snapshot
 
-        val activeName = tunnelManager.activeTunnel.value
-
-        // Find the first tunnel whose conditions match the current network
-        val matchingProfile = conditions.entries
-            .filter { it.value.enabled }
-            .firstOrNull { (_, cond) -> cond.shouldRun(snapshot) }
-            ?.let { (name, _) -> repository.get(name) }
-
-        if (matchingProfile != null) {
-            // A condition matches
-            if (activeName == matchingProfile.name) {
-                // Already active, nothing to do
-                return
+        val action = decideAutomation(
+            snapshot = snapshot,
+            conditions = conditions,
+            tunnelOrder = repository.profiles.value.map { it.name },
+            activeName = tunnelManager.activeTunnel.value,
+            override = manualOverride,
+        )
+        when (action) {
+            AutomationAction.None -> Unit
+            is AutomationAction.Start -> {
+                val profile = repository.get(action.name) ?: return
+                // Without VPN permission nothing can be started automatically.
+                if (!tunnelManager.hasConsent()) return
+                runCatching { tunnelManager.setTunnelState(profile, up = true) }
             }
-            if (manuallySuppressedTunnel == matchingProfile.name) {
-                // User manually turned this off on this network; respect their choice
-                return
-            }
-            if (!tunnelManager.hasConsent()) {
-                // Missing VPN permission, cannot automatically start
-                return
-            }
-            runCatching {
-                tunnelManager.setTunnelState(matchingProfile, up = true)
-            }
-        } else {
-            // No condition matches.
-            // If an active tunnel has conditions enabled (auto-managed), bring it down!
-            if (activeName != null) {
-                val activeConditions = conditions[activeName]
-                if (activeConditions?.enabled == true) {
-                    runCatching {
-                        tunnelManager.bringDownActive()
-                    }
-                }
-            }
+            AutomationAction.StopActive -> runCatching { tunnelManager.bringDownActive() }
         }
     }
 

@@ -19,6 +19,14 @@ in F-Droid live in `fastlane/metadata/android/en-US/changelogs/`.
 - Renaming a tunnel follows through to the widgets bound to it instead of
   orphaning them; a widget whose tunnel was deleted says so and offers to
   pick another instead of quietly toggling a different one.
+- A tunnel switched on by hand **stays on** even where its run conditions say
+  otherwise, until the network changes; previously automation took it down
+  again within a second.
+- When several tunnels' run conditions match, the choice is **predictable**:
+  a connected tunnel that still qualifies stays, otherwise the first in the
+  list connects. It used to depend on the order of files on disk.
+- The run conditions screen **warns when other tunnels compete** for the same
+  networks.
 
 ## [117] — versionCode 117
 

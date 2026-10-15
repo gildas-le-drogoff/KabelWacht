@@ -36,6 +36,17 @@ class RunConditionsViewModel(
         conditions = conditionsStore.get(name)
     }
 
+    /**
+     * Other tunnels whose run conditions compete with the ones being edited on
+     * some network, in list order. Only one tunnel can be active, so there the
+     * running tunnel stays and otherwise the first in the list wins.
+     */
+    val overlappingTunnels: List<String>
+        get() = conditionsStore.conditions.value
+            .filter { (name, other) -> name != tunnelName && conditions.overlapsWith(other) }
+            .keys
+            .sortedBy { it.lowercase() }
+
     fun onEnabledChange(value: Boolean) {
         conditions = conditions.copy(enabled = value)
     }
