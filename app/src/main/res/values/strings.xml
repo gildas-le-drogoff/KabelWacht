@@ -107,6 +107,8 @@
     <string name="auto_label">Auto</string>
     <string name="enable_run_conditions">Enable run conditions</string>
     <string name="run_conditions_desc">Automatically connects or disconnects this tunnel based on your current network environment.</string>
+    <string name="overlap_title">Competes with other tunnels</string>
+    <string name="overlap_desc">%1$s can also run on some of these networks. Only one tunnel is active at a time: a connected one that still qualifies stays, otherwise the first in the list connects.</string>
     <string name="section_live_status">Current status</string>
     <string name="status_eval_running">Conditions met · Tunnel will connect</string>
     <string name="status_eval_paused">Conditions not met · Tunnel will disconnect</string>

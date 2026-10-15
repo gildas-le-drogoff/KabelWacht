@@ -76,6 +76,26 @@ data class TunnelRunConditions(
         return false
     }
 
+    /**
+     * True if some network would make both this and [other] want to run, i.e. the
+     * two tunnels compete for the single active slot there. Checked by evaluating
+     * both against a representative network of every kind: each Wi-Fi name either
+     * side mentions, an unlisted one and a hidden one, mobile with and without
+     * roaming, and Ethernet, each metered and unmetered.
+     */
+    fun overlapsWith(other: TunnelRunConditions): Boolean {
+        if (!enabled || !other.enabled) return false
+        val ssids: List<String?> = (wifiSsids + other.wifiSsids).toList() + UNLISTED_SSID + null
+        val networks = listOf(false, true).flatMap { metered ->
+            ssids.map {
+                NetworkStateSnapshot(isConnected = true, isWifi = true, wifiSsid = it, isMetered = metered)
+            } + listOf(false, true).map { roaming ->
+                NetworkStateSnapshot(isConnected = true, isMobile = true, isRoaming = roaming, isMetered = metered)
+            } + NetworkStateSnapshot(isConnected = true, isEthernet = true, isMetered = metered)
+        }
+        return networks.any { shouldRun(it) && other.shouldRun(it) }
+    }
+
     fun toFormatString(): String = buildString {
         appendLine("enabled = $enabled")
         appendLine("wifiEnabled = $wifiEnabled")
@@ -87,6 +107,9 @@ data class TunnelRunConditions(
     }
 
     companion object {
+        // Stands for "a Wi-Fi network neither tunnel lists"; SSIDs cannot contain NUL.
+        private const val UNLISTED_SSID = "\u0000unlisted"
+
         fun parse(text: String): TunnelRunConditions {
             val map = text.lineSequence()
                 .map { it.trim() }

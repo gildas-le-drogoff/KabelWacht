@@ -198,4 +198,55 @@ class TunnelRunConditionsTest {
         val parsed = TunnelRunConditions.parse(formatted)
         assertEquals(defaultConditions, parsed)
     }
+
+    @Test
+    fun overlap_defaults_compete_everywhere() {
+        assertTrue(TunnelRunConditions(enabled = true).overlapsWith(TunnelRunConditions(enabled = true)))
+    }
+
+    @Test
+    fun overlap_ignores_disabled_conditions() {
+        assertFalse(TunnelRunConditions(enabled = true).overlapsWith(TunnelRunConditions(enabled = false)))
+    }
+
+    @Test
+    fun overlap_disjoint_wifi_lists_do_not_compete() {
+        val home = TunnelRunConditions(
+            enabled = true,
+            wifiMode = WifiConditionMode.INCLUDE_LIST,
+            wifiSsids = setOf("Home"),
+            mobileMode = MobileConditionMode.NEVER,
+            ethernetEnabled = false,
+        )
+        val office = home.copy(wifiSsids = setOf("Office"))
+        assertFalse(home.overlapsWith(office))
+        assertTrue(home.overlapsWith(office.copy(wifiSsids = setOf("home"))))
+    }
+
+    @Test
+    fun overlap_exclude_list_competes_on_unlisted_wifi() {
+        val notAtHome = TunnelRunConditions(
+            enabled = true,
+            wifiMode = WifiConditionMode.EXCLUDE_LIST,
+            wifiSsids = setOf("Home"),
+            mobileMode = MobileConditionMode.NEVER,
+            ethernetEnabled = false,
+        )
+        val onlyHome = notAtHome.copy(wifiMode = WifiConditionMode.INCLUDE_LIST)
+        assertFalse(notAtHome.overlapsWith(onlyHome))
+        assertTrue(notAtHome.overlapsWith(notAtHome.copy(wifiSsids = setOf("Office"))))
+    }
+
+    @Test
+    fun overlap_roaming_split_does_not_compete() {
+        val roaming = TunnelRunConditions(
+            enabled = true,
+            wifiEnabled = false,
+            mobileMode = MobileConditionMode.ONLY_ROAMING,
+            ethernetEnabled = false,
+        )
+        val domestic = roaming.copy(mobileMode = MobileConditionMode.NEVER_ROAMING)
+        assertFalse(roaming.overlapsWith(domestic))
+        assertTrue(roaming.overlapsWith(roaming.copy(mobileMode = MobileConditionMode.ALWAYS)))
+    }
 }
