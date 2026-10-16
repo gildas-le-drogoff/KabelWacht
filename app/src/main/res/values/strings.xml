@@ -131,6 +131,8 @@
     <string name="location_permission_needed_title">Location permission for Wi-Fi names</string>
     <string name="location_permission_needed_desc">Android requires Location permission to read Wi-Fi network names (SSID). KabelWacht never uses or tracks your GPS location.</string>
     <string name="grant_permission">Grant permission</string>
+    <string name="notification_permission_needed_title">Notifications are off</string>
+    <string name="notification_permission_needed_desc">Run conditions still work, but without notification permission KabelWacht cannot show that automation is active or tell you when the always-on VPN failed to connect.</string>
     <string name="section_mobile_rules">Mobile data rules</string>
     <string name="mobile_mode_always">Connect on all mobile networks</string>
     <string name="mobile_mode_never">Never connect on mobile data</string>

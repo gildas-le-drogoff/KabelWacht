@@ -58,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,10 +87,12 @@ import com.github.muelli.kabelwacht.data.TunnelProfile
 import com.github.muelli.kabelwacht.data.TunnelSearch
 import com.github.muelli.kabelwacht.ui.AppViewModelProvider
 import com.github.muelli.kabelwacht.ui.UiMessage
+import com.github.muelli.kabelwacht.ui.rememberNotificationPermissionState
 import com.github.muelli.kabelwacht.ui.theme.MaxContentWidth
 import com.github.muelli.kabelwacht.util.confirmDeviceCredential
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -153,6 +156,17 @@ fun TunnelListScreen(
         }
     }
 
+    // --- Notifications: the connected tunnel becomes the always-on target, whose
+    // failure to start is reported by notification; offer the prompt once ---
+    val notificationPermission = rememberNotificationPermissionState()
+    val scope = rememberCoroutineScope()
+    fun offerNotificationsOnce() {
+        if (notificationPermission.granted) return
+        scope.launch {
+            if (container.settings.claimNotificationPrompt()) notificationPermission.request()
+        }
+    }
+
     // --- VPN consent, then activate ---
     var pendingToggleOn by remember { mutableStateOf<TunnelProfile?>(null) }
     val consentLauncher = rememberLauncherForActivityResult(
@@ -162,6 +176,7 @@ fun TunnelListScreen(
         pendingToggleOn = null
         if (result.resultCode == Activity.RESULT_OK && profile != null) {
             viewModel.setActive(profile, up = true)
+            offerNotificationsOnce()
         } else {
             viewModel.showMessage(UiMessage(R.string.vpn_permission_required))
         }
@@ -174,6 +189,7 @@ fun TunnelListScreen(
         val intent = viewModel.consentIntent()
         if (intent == null) {
             viewModel.setActive(profile, up = true)
+            offerNotificationsOnce()
         } else {
             pendingToggleOn = profile
             consentLauncher.launch(intent)

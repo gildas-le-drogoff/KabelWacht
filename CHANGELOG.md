@@ -14,6 +14,11 @@ in F-Droid live in `fastlane/metadata/android/en-US/changelogs/`.
 - The widget **resizes in both directions** and adapts: just the icon when
   small, name and state in a row at the default size, and a larger stacked
   layout when tall. A connected tunnel tints the widget background.
+- On Android 13+ KabelWacht **asks for notification permission** when you turn
+  on run conditions and once after you first connect a tunnel; until then
+  Android silently hid the automation notification and the always-on failure
+  warning. Declining is fine: everything keeps working, and the run conditions
+  screen shows a notice with a way to grant it later.
 
 ### Fixed
 - Renaming a tunnel follows through to the widgets bound to it instead of

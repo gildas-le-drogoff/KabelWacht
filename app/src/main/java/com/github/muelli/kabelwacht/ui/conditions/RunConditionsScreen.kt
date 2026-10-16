@@ -66,6 +66,7 @@ import com.github.muelli.kabelwacht.data.MobileConditionMode
 import com.github.muelli.kabelwacht.data.NetworkStateSnapshot
 import com.github.muelli.kabelwacht.data.WifiConditionMode
 import com.github.muelli.kabelwacht.ui.AppViewModelProvider
+import com.github.muelli.kabelwacht.ui.rememberNotificationPermissionState
 import com.github.muelli.kabelwacht.ui.theme.MaxContentWidth
 import com.github.muelli.kabelwacht.vpn.automation.ConditionMonitorService
 
@@ -103,6 +104,10 @@ fun RunConditionsScreen(
             ConditionMonitorService.sync(context, true)
         }
     }
+
+    // Automation runs as a foreground service whose notification Android 13+ only
+    // shows once this is granted; ask when the user turns run conditions on.
+    val notificationPermission = rememberNotificationPermissionState()
 
     val networkSnapshot by viewModel.networkSnapshot.collectAsStateWithLifecycle()
     val conditions = viewModel.conditions
@@ -172,9 +177,20 @@ fun RunConditionsScreen(
                     }
                     Switch(
                         checked = conditions.enabled,
-                        onCheckedChange = viewModel::onEnabledChange,
+                        onCheckedChange = { enabled ->
+                            viewModel.onEnabledChange(enabled)
+                            if (enabled) notificationPermission.request()
+                        },
                     )
                 }
+            }
+
+            if (conditions.enabled && !notificationPermission.granted) {
+                PermissionNotice(
+                    title = stringResource(R.string.notification_permission_needed_title),
+                    description = stringResource(R.string.notification_permission_needed_desc),
+                    onRequestPermission = notificationPermission::request,
+                )
             }
 
             val overlapping = viewModel.overlappingTunnels
@@ -233,14 +249,18 @@ fun RunConditionsScreen(
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
                                     if (!hasLocationPermission) {
-                                        LocationPermissionNotice(onRequestPermission = {
-                                            permissionLauncher.launch(
-                                                arrayOf(
-                                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                                                ),
-                                            )
-                                        })
+                                        PermissionNotice(
+                                            title = stringResource(R.string.location_permission_needed_title),
+                                            description = stringResource(R.string.location_permission_needed_desc),
+                                            onRequestPermission = {
+                                                permissionLauncher.launch(
+                                                    arrayOf(
+                                                        Manifest.permission.ACCESS_FINE_LOCATION,
+                                                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                                                    ),
+                                                )
+                                            },
+                                        )
                                     }
 
                                     // Add current Wi-Fi quick button
@@ -513,7 +533,11 @@ private fun OverlapNotice(names: List<String>) {
 }
 
 @Composable
-private fun LocationPermissionNotice(onRequestPermission: () -> Unit) {
+private fun PermissionNotice(
+    title: String,
+    description: String,
+    onRequestPermission: () -> Unit,
+) {
     OutlinedCard(
         colors = CardDefaults.outlinedCardColors(
             containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f),
@@ -532,13 +556,13 @@ private fun LocationPermissionNotice(onRequestPermission: () -> Unit) {
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    stringResource(R.string.location_permission_needed_title),
+                    title,
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onTertiaryContainer,
                 )
             }
             Text(
-                stringResource(R.string.location_permission_needed_desc),
+                description,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onTertiaryContainer,
             )
