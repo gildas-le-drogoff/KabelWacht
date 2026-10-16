@@ -144,4 +144,8 @@
     <string name="automation_service_notification_text">Monitoring network conditions for automated tunnels</string>
     <string name="automation_notification_channel">Tunnel Automation</string>
     <string name="automation_notification_channel_desc">Keeps network rule monitoring active in the background</string>
+    <string name="problems_notification_channel">Connection problems</string>
+    <string name="problems_notification_channel_desc">Tells you when a tunnel could not be connected without you asking, such as always-on VPN after a restart</string>
+    <string name="always_on_failed_title">Always-on VPN is not connected</string>
+    <string name="always_on_failed_text">Could not connect “%1$s”. Open KabelWacht to connect it.</string>
 </resources>

@@ -9,6 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.github.muelli.kabelwacht.ui.nav.KabelWachtNavHost
 import com.github.muelli.kabelwacht.ui.theme.KabelWachtTheme
+import com.github.muelli.kabelwacht.vpn.automation.ConditionMonitorService
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -19,5 +20,12 @@ class MainActivity : ComponentActivity() {
                 KabelWachtNavHost()
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Now in the foreground, the monitor may take the location service type
+        // it could not get when started at boot.
+        ConditionMonitorService.reassert(this)
     }
 }

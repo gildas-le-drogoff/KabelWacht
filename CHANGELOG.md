@@ -27,6 +27,15 @@ in F-Droid live in `fastlane/metadata/android/en-US/changelogs/`.
   list connects. It used to depend on the order of files on disk.
 - The run conditions screen **warns when other tunnels compete** for the same
   networks.
+- With run conditions set up and location granted, the app **no longer
+  crashes after a restart** on Android 14 and later. Monitoring now starts
+  without the location service type in the background and picks it up when
+  the app is next opened; until then Wi-Fi rules see an unknown network.
+  ([#34](https://github.com/muelli/KabelWacht/issues/34))
+- **Always-on VPN connects after a restart** even when no network is up yet:
+  instead of giving up silently when the endpoint cannot be resolved, it
+  tries again once a network appears, and posts a notification if it still
+  cannot connect. ([#34](https://github.com/muelli/KabelWacht/issues/34))
 
 ## [117] — versionCode 117
 

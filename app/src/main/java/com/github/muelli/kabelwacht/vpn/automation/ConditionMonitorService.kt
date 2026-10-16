@@ -15,6 +15,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -73,20 +74,26 @@ class ConditionMonitorService : Service() {
 
     private fun startInForeground(title: String, text: String) {
         val notification = buildNotification(title, text)
-        var fgsType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-        } else {
-            0
-        }
-        // The location service type is what entitles background SSID reads for
-        // Wi-Fi rules — but declaring it without the permission actually granted
-        // throws on Android 14+, so it is added conditionally.
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+        val hasFineLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
-        ) {
-            fgsType = fgsType or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+        val attempts = foregroundServiceTypeAttempts(Build.VERSION.SDK_INT, hasFineLocation)
+        for ((index, fgsType) in attempts.withIndex()) {
+            try {
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, fgsType)
+                return
+            } catch (e: SecurityException) {
+                Log.w(TAG, "startForeground(type=$fgsType) refused", e)
+            } catch (e: IllegalStateException) {
+                // ForegroundServiceStartNotAllowedException and the
+                // ForegroundServiceTypeException family are IllegalStateExceptions.
+                Log.w(TAG, "startForeground(type=$fgsType) refused", e)
+            }
+            if (index == attempts.lastIndex) {
+                // Not even the plain declaration is allowed: give up quietly rather
+                // than crash; the next foreground visit starts the service again.
+                stopSelf()
+            }
         }
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, fgsType)
     }
 
     private fun buildNotification(title: String, text: String): Notification {
@@ -127,6 +134,44 @@ class ConditionMonitorService : Service() {
     companion object {
         const val CHANNEL_ID = "tunnel_automation_channel"
         private const val NOTIFICATION_ID = 2001
+
+        private const val TAG = "ConditionMonitor"
+
+        /**
+         * The foreground service types to try, most capable first.
+         *
+         * The location type is what entitles background SSID reads for Wi-Fi
+         * rules, but on Android 14+ it is only allowed while the app may use
+         * while-in-use location — not when started from BOOT_COMPLETED or
+         * restarted by the system in the background (#34). So a declaration
+         * with it is followed by one without, which leaves SSID rules seeing an
+         * unknown network until the app is next opened and [reassert] runs.
+         */
+        fun foregroundServiceTypeAttempts(sdkInt: Int, hasFineLocation: Boolean): List<Int> {
+            val base = if (sdkInt >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            } else {
+                0
+            }
+            return if (hasFineLocation) {
+                listOf(base or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION, base)
+            } else {
+                listOf(base)
+            }
+        }
+
+        /**
+         * Called when the app comes to the foreground: if monitoring runs and
+         * location is granted, re-declare the service so it picks up the
+         * location type it may have been refused in the background.
+         */
+        fun reassert(context: Context) {
+            val hasAutomations = context.appContainer.conditionsStore.conditions.value
+                .any { it.value.enabled }
+            val hasFineLocation = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+            if (hasAutomations && hasFineLocation) sync(context, true)
+        }
 
         fun sync(context: Context, hasAutomations: Boolean) {
             val intent = Intent(context, ConditionMonitorService::class.java)

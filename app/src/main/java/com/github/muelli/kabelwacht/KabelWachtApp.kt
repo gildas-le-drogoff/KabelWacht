@@ -4,14 +4,21 @@
 package com.github.muelli.kabelwacht
 
 import android.app.Application
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.util.Log
 import android.widget.Toast
+import androidx.core.app.NotificationChannelCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.github.muelli.kabelwacht.data.ConditionsStore
 import com.github.muelli.kabelwacht.data.ConfigStore
 import com.github.muelli.kabelwacht.data.SettingsStore
 import com.github.muelli.kabelwacht.data.TunnelRepository
 import com.github.muelli.kabelwacht.data.WidgetBindingStore
 import com.github.muelli.kabelwacht.vpn.TunnelManager
+import com.github.muelli.kabelwacht.vpn.retryOnConnectivity
 import com.github.muelli.kabelwacht.vpn.automation.AutomationEngine
 import com.github.muelli.kabelwacht.vpn.automation.ConditionMonitorService
 import com.github.muelli.kabelwacht.vpn.automation.NetworkStateMonitor
@@ -24,8 +31,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Application entry point. Owns the [AppContainer] (manual dependency injection —
@@ -158,7 +168,60 @@ class AppContainer(context: Context) {
             ?: repository.profiles.value.singleOrNull()?.name
             ?: return
         val profile = repository.get(name) ?: return
-        runCatching { tunnelManager.setTunnelState(profile, up = true) }
+        // Right after boot there may be no network yet, so the endpoint's
+        // hostname cannot resolve and the backend refuses (#34). Try again
+        // once a network shows up, instead of leaving always-on silently off.
+        val result = retryOnConnectivity(
+            connected = networkMonitor.networkSnapshot.map { it.isConnected },
+            maxAttempts = ALWAYS_ON_ATTEMPTS,
+            connectTimeout = ALWAYS_ON_CONNECT_TIMEOUT,
+            settleDelay = ALWAYS_ON_SETTLE_DELAY,
+            onFailure = { attempt, e -> Log.w(TAG, "Always-on: bringing up $name failed (attempt $attempt)", e) },
+        ) {
+            // Someone else (the user, automation) got a tunnel up meanwhile.
+            if (tunnelManager.activeTunnel.value == null) {
+                tunnelManager.setTunnelState(profile, up = true)
+            }
+        }
+        if (result.isFailure) notifyAlwaysOnFailed(name)
+    }
+
+    private fun notifyAlwaysOnFailed(name: String) {
+        val manager = NotificationManagerCompat.from(appContext)
+        manager.createNotificationChannel(
+            NotificationChannelCompat.Builder(PROBLEMS_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_DEFAULT)
+                .setName(appContext.getString(R.string.problems_notification_channel))
+                .setDescription(appContext.getString(R.string.problems_notification_channel_desc))
+                .build(),
+        )
+        if (!manager.areNotificationsEnabled()) return
+        val open = PendingIntent.getActivity(
+            appContext,
+            0,
+            Intent(appContext, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = NotificationCompat.Builder(appContext, PROBLEMS_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle(appContext.getString(R.string.always_on_failed_title))
+            .setContentText(appContext.getString(R.string.always_on_failed_text, name))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        try {
+            manager.notify(ALWAYS_ON_FAILED_NOTIFICATION_ID, notification)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Cannot post the always-on failure notification", e)
+        }
+    }
+
+    private companion object {
+        const val TAG = "KabelWacht"
+        const val PROBLEMS_CHANNEL_ID = "tunnel_problems_channel"
+        const val ALWAYS_ON_FAILED_NOTIFICATION_ID = 2002
+        const val ALWAYS_ON_ATTEMPTS = 5
+        val ALWAYS_ON_CONNECT_TIMEOUT = 15.minutes
+        val ALWAYS_ON_SETTLE_DELAY = 2.seconds
     }
 }
 
